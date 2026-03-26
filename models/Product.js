@@ -18,6 +18,7 @@ const productSchema = new mongoose.Schema(
     // Normalized product fields — same shape regardless of source platform
     name:        { type: String, required: true, trim: true },
     price:       { type: Number, required: true, min: 0 },
+    currency:    { type: String, default: 'INR' },
     platform:    { type: String, required: true, enum: ['Amazon', 'Flipkart', 'eBay', 'Etsy'] },
     rating:      { type: Number, min: 0, max: 5, default: 0 },
     reviews:     { type: Number, default: 0 },
