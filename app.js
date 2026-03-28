@@ -1,6 +1,14 @@
-// app.js
-// Express application setup — middleware stack + route mounting.
-// Kept separate from server.js so it's easy to import in tests.
+// ============================================================
+// app.js — Express application factory
+// ============================================================
+// This file creates and configures the Express app:
+//   - Registers global middleware (CORS, JSON parsing, logging, rate limiting)
+//   - Mounts all API route groups under /api
+//   - Adds the health-check endpoint
+//   - Attaches the centralised error handler (must be last)
+//
+// Keeping this separate from server.js makes it easy to import
+// the app in automated tests without actually starting a server.
 
 import express from 'express';
 import cors from 'cors';
@@ -8,7 +16,7 @@ import requestLogger from './middleware/requestLogger.js';
 import errorMiddleware from './middleware/errorMiddleware.js';
 import { generalLimiter } from './config/rateLimiter.js';
 
-// Routes
+// Route modules — each file handles one resource group
 import authRoutes    from './routes/authRoutes.js';
 import userRoutes    from './routes/userRoutes.js';
 import productRoutes from './routes/productRoutes.js';
@@ -16,28 +24,46 @@ import historyRoutes from './routes/historyRoutes.js';
 
 const app = express();
 
-// ── Security & Parsing ────────────────────────────────────────────────────────
+// ── CORS ──────────────────────────────────────────────────────────────────────
+// CORS (Cross-Origin Resource Sharing) controls which domains can call this API.
+// Without this, the browser would block requests from the React frontend.
 app.use(cors({
-  origin:      process.env.CLIENT_URL || 'http://localhost:5173',
-  credentials: true,
+  origin:      process.env.CLIENT_URL || 'http://localhost:5173', // Vite dev server
+  credentials: true,                                               // Allow cookies / auth headers
   methods:     ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
 }));
-app.use(express.json({ limit: '10kb' }));       // reject oversized payloads
+
+// ── Body parsers ──────────────────────────────────────────────────────────────
+// Parse incoming JSON bodies (e.g. POST /api/auth/login sends { email, password })
+// The 10kb limit rejects oversized payloads to prevent abuse
+app.use(express.json({ limit: '10kb' }));
+// Parse URL-encoded form data (e.g. traditional HTML form submissions)
 app.use(express.urlencoded({ extended: false }));
 
-// ── Logging ───────────────────────────────────────────────────────────────────
+// ── Request logger ────────────────────────────────────────────────────────────
+// Logs every incoming request to the console so developers can see traffic
 app.use(requestLogger);
 
-// ── Global rate limiter (applied to all routes) ───────────────────────────────
+// ── Global rate limiter ───────────────────────────────────────────────────────
+// Limits each IP to 100 requests per 15 minutes across all /api routes.
+// Prevents bots and abusive clients from hammering the server.
 app.use('/api', generalLimiter);
 
-// ── Routes ────────────────────────────────────────────────────────────────────
+// ── Route mounting ────────────────────────────────────────────────────────────
+// Each router handles a specific group of endpoints:
+//   /api/auth     → register, login
+//   /api/users    → user profile management
+//   /api/products → search, compare, trending
+//   /api/history  → search history for logged-in users
 app.use('/api/auth',     authRoutes);
 app.use('/api/users',    userRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/history',  historyRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────────
+// Simple endpoint used by the frontend and Chrome extension to verify the
+// backend is reachable before making real API calls.
+// Returns: { success, status, message, env, time }
 app.get('/api/health', (req, res) => {
   res.json({
     success: true,
@@ -48,7 +74,9 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Error handling middleware (must be last)
+// ── Centralised error handler ─────────────────────────────────────────────────
+// MUST be registered last. Any controller that calls next(error) ends up here.
+// This middleware formats the error into a consistent JSON response.
 app.use(errorMiddleware);
 
 export default app;

@@ -1,24 +1,35 @@
-// controllers/historyController.js
+// ============================================================
+// controllers/historyController.js — Search history management
+// ============================================================
+// Handles reading and clearing a user's personal search history.
+// Both routes require authentication (the `auth` middleware in
+// historyRoutes.js ensures req.user is always populated here).
 
 import SearchHistory from '../models/SearchHistory.js';
 import { sendSuccess } from '../utils/ApiResponse.js';
 
 /**
  * GET /api/history
- * Returns the authenticated user's search history (most recent first).
- * Supports ?limit=20&page=1
+ * Returns the authenticated user's search history, newest first.
+ * Supports pagination via ?page=1&limit=20
+ *
+ * Response: array of search history records + pagination meta
  */
 export const getHistory = async (req, res, next) => {
   try {
-    const page  = Math.max(1, parseInt(req.query.page  || 1, 10));
-    const limit = Math.min(50, parseInt(req.query.limit || 20, 10));
+    // Parse pagination params, with sensible defaults and safety caps
+    const page  = Math.max(1, parseInt(req.query.page  || 1,  10));
+    const limit = Math.min(50, parseInt(req.query.limit || 20, 10)); // max 50 per page
 
+    // Run both queries in parallel for efficiency:
+    //   1. Fetch the paginated history records
+    //   2. Count the total number of records (needed for totalPages)
     const [history, total] = await Promise.all([
       SearchHistory.find({ userId: req.user._id })
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .lean(),
+        .sort({ createdAt: -1 })          // newest first
+        .skip((page - 1) * limit)         // skip records from previous pages
+        .limit(limit)                     // only return this page's records
+        .lean(),                          // plain JS objects (faster than Mongoose docs)
       SearchHistory.countDocuments({ userId: req.user._id }),
     ]);
 
@@ -35,10 +46,13 @@ export const getHistory = async (req, res, next) => {
 
 /**
  * DELETE /api/history
- * Clears all search history for the authenticated user.
+ * Permanently deletes all search history records for the logged-in user.
+ *
+ * Response: success message with no data payload
  */
 export const clearHistory = async (req, res, next) => {
   try {
+    // deleteMany removes all documents matching the filter
     await SearchHistory.deleteMany({ userId: req.user._id });
     return sendSuccess(res, null, 'Search history cleared');
   } catch (err) {
