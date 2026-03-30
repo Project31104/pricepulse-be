@@ -25,6 +25,10 @@ import priceHistoryRoutes from './routes/priceHistoryRoutes.js';
 
 const app = express();
 
+// Required for Vercel / reverse proxies — trust X-Forwarded-* headers
+// so req.ip returns the real client IP instead of the proxy IP
+app.set('trust proxy', 1);
+
 // ── CORS ──────────────────────────────────────────────────────────────────────
 // CORS (Cross-Origin Resource Sharing) controls which domains can call this API.
 // Without this, the browser would block requests from the React frontend.

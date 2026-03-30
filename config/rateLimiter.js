@@ -12,35 +12,25 @@
 
 import rateLimit from 'express-rate-limit';
 
-// ── Tier 1: General API limiter ───────────────────────────────────────────────
-// Applied to ALL /api routes as a baseline safety net.
-// Allows 100 requests per 15-minute window per IP address.
-export const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes in milliseconds
-  max: 100,                  // maximum requests per window
-  standardHeaders: true,     // Send rate-limit info in response headers (RateLimit-*)
-  legacyHeaders: false,      // Don't send the older X-RateLimit-* headers
-  message: { success: false, message: 'Too many requests, please try again later.' },
-});
-
-// ── Tier 2: Auth limiter ──────────────────────────────────────────────────────
-// Applied only to login/register routes.
-// Much stricter (20 attempts per 15 min) to block brute-force password attacks.
-export const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
+const limiterOptions = (max, windowMs, message) => ({
+  windowMs,
+  max,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { success: false, message: 'Too many auth attempts, please try again in 15 minutes.' },
+  // Required for Vercel — trust the X-Forwarded-For header
+  keyGenerator: (req) => req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip || 'unknown',
+  skip: () => process.env.NODE_ENV === 'production' && !process.env.ENABLE_RATE_LIMIT,
+  message: { success: false, message },
 });
 
-// ── Tier 3: Search limiter ────────────────────────────────────────────────────
-// Applied to the product search endpoint.
-// 30 searches per minute is generous for a human but blocks automated scrapers.
-export const searchLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, message: 'Search rate limit exceeded. Please slow down.' },
-});
+export const generalLimiter = rateLimit(limiterOptions(
+  100, 15 * 60 * 1000, 'Too many requests, please try again later.'
+));
+
+export const authLimiter = rateLimit(limiterOptions(
+  20, 15 * 60 * 1000, 'Too many auth attempts, please try again in 15 minutes.'
+));
+
+export const searchLimiter = rateLimit(limiterOptions(
+  30, 60 * 1000, 'Search rate limit exceeded. Please slow down.'
+));

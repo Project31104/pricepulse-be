@@ -1,29 +1,14 @@
-// api/index.js — Vercel serverless entry point (CommonJS wrapper)
-const path = require('path');
+// api/index.js — Vercel serverless entry point
+import 'dotenv/config';
+import app from '../app.js';
+import connectDB from '../config/db.js';
 
-// Load .env relative to backend root
-require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
-
-let appPromise = null;
-
-function getApp() {
-  if (!appPromise) {
-    appPromise = Promise.all([
-      import('../app.js'),
-      import('../config/db.js'),
-    ]).then(([{ default: app }, { default: connectDB }]) => {
-      return connectDB()
-        .then(() => app)
-        .catch((err) => {
-          console.error('DB connection error:', err.message);
-          return app; // still serve even if DB fails (returns errors gracefully)
-        });
-    });
-  }
-  return appPromise;
+// Connect DB on cold start — cached across warm invocations
+let isConnected = false;
+if (!isConnected) {
+  connectDB()
+    .then(() => { isConnected = true; })
+    .catch((err) => console.error('DB connection error:', err.message));
 }
 
-module.exports = async (req, res) => {
-  const app = await getApp();
-  app(req, res);
-};
+export default app;
