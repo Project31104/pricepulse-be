@@ -17,10 +17,11 @@ import errorMiddleware from './middleware/errorMiddleware.js';
 import { generalLimiter } from './config/rateLimiter.js';
 
 // Route modules — each file handles one resource group
-import authRoutes    from './routes/authRoutes.js';
-import userRoutes    from './routes/userRoutes.js';
-import productRoutes from './routes/productRoutes.js';
-import historyRoutes from './routes/historyRoutes.js';
+import authRoutes         from './routes/authRoutes.js';
+import userRoutes         from './routes/userRoutes.js';
+import productRoutes      from './routes/productRoutes.js';
+import historyRoutes      from './routes/historyRoutes.js';
+import priceHistoryRoutes from './routes/priceHistoryRoutes.js';
 
 const app = express();
 
@@ -59,6 +60,8 @@ app.use('/api/auth',     authRoutes);
 app.use('/api/users',    userRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/history',  historyRoutes);
+// Price history snapshots — used by the browser extension
+app.use('/api/products', priceHistoryRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 // Simple endpoint used by the frontend and Chrome extension to verify the
