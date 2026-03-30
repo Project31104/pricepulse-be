@@ -29,9 +29,17 @@ const app = express();
 // CORS (Cross-Origin Resource Sharing) controls which domains can call this API.
 // Without this, the browser would block requests from the React frontend.
 app.use(cors({
-  origin:      process.env.CLIENT_URL || 'http://localhost:5173', // Vite dev server
-  credentials: true,                                               // Allow cookies / auth headers
-  methods:     ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  origin: (origin, callback) => {
+    const allowed = process.env.CLIENT_URL || 'http://localhost:5173';
+    // Allow frontend, Chrome extensions, and requests with no origin (e.g. curl)
+    if (!origin || origin === allowed || origin.startsWith('chrome-extension://')) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
 }));
 
 // ── Body parsers ──────────────────────────────────────────────────────────────

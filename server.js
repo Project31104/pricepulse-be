@@ -9,7 +9,7 @@
 // It is intentionally kept small — all Express setup lives in
 // app.js so this file only handles startup orchestration.
 
-import 'dotenv/config';        // Reads .env and injects values into process.env
+import 'dotenv/config'; // Reads .env from backend/ directory
 import app from './app.js';           // The fully configured Express application
 import connectDB from './config/db.js'; // Helper that opens the MongoDB connection
 
