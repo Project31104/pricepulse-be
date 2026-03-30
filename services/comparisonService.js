@@ -13,6 +13,8 @@
 
 import amazonService   from './amazonService.js';
 import flipkartService from './flipkartService.js';
+import ebayService     from './ebayService.js';
+import etsyService     from './etsyService.js';
 import { getUsdToInrRate, usdToInr } from '../utils/currencyConverter.js';
 import SearchHistory from '../models/SearchHistory.js';
 import { rankProducts } from '../utils/rankProducts.js';
@@ -34,104 +36,90 @@ class ComparisonService {
    * @returns {{ products: Product[], meta: object }}
    */
   async search(query, userId = null) {
-    // Normalise the cache key so "iPhone" and "iphone" hit the same entry
     const key = query.toLowerCase().trim();
 
     // ── Cache check ──────────────────────────────────────────────────────────
-    // If we have a recent result for this query, return it immediately
-    // without making any network requests to the e-commerce sites
     const cached = _cache.get(key);
     if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
       return { ...cached.data, meta: { ...cached.data.meta, servedFromCache: true } };
     }
 
     // ── Exchange rate ────────────────────────────────────────────────────────
-    // Get the current USD→INR rate (cached internally for 1 hour)
-    // so we can convert any USD prices to INR
     const inrRate = await getUsdToInrRate();
 
-    // ── Parallel scraping ────────────────────────────────────────────────────
-    // Promise.allSettled runs both scrapers at the same time and waits for
-    // BOTH to finish, even if one fails. This is faster than running them
-    // one after the other (sequential would take 2× as long).
-    const [amazonRes, flipkartRes] = await Promise.allSettled([
+    // ── Parallel scraping — all 4 platforms ──────────────────────────────────
+    // Promise.allSettled ensures one failing scraper never blocks the others
+    const [amazonRes, flipkartRes, ebayRes, etsyRes] = await Promise.allSettled([
       amazonService.search(query),
       flipkartService.search(query),
+      ebayService.search(query),
+      etsyService.search(query),
     ]);
 
-    // Collect error messages from any scrapers that failed
     const errors = [];
 
-    // If Amazon scraping succeeded, use the results; otherwise log the error
-    // and use an empty array so the rest of the code still works
-    const fromAmazon = amazonRes.status === 'fulfilled'
-      ? amazonRes.value
-      : (errors.push(`Amazon: ${amazonRes.reason?.message}`), []);
+    const fromAmazon   = amazonRes.status   === 'fulfilled' ? amazonRes.value   : (errors.push(`Amazon: ${amazonRes.reason?.message}`),   []);
+    const fromFlipkart = flipkartRes.status === 'fulfilled' ? flipkartRes.value : (errors.push(`Flipkart: ${flipkartRes.reason?.message}`), []);
+    const fromEbay     = ebayRes.status     === 'fulfilled' ? ebayRes.value     : (errors.push(`eBay: ${ebayRes.reason?.message}`),         []);
+    const fromEtsy     = etsyRes.status     === 'fulfilled' ? etsyRes.value     : (errors.push(`Etsy: ${etsyRes.reason?.message}`),         []);
 
-    const fromFlipkart = flipkartRes.status === 'fulfilled'
-      ? flipkartRes.value
-      : (errors.push(`Flipkart: ${flipkartRes.reason?.message}`), []);
+    console.log(`[Search] "${query}" — Amazon:${fromAmazon.length} Flipkart:${fromFlipkart.length} eBay:${fromEbay.length} Etsy:${fromEtsy.length}`);
+    if (errors.length) console.warn('[Search] Partial errors:', errors);
 
     // ── Price normalisation ──────────────────────────────────────────────────
-    // Both scrapers return prices in INR already (amazon.in and flipkart.com
-    // list in ₹). This normalise function handles the edge case where a
-    // product price might come in as USD (e.g. from a future eBay integration).
     const normalise = (product) => ({
       ...product,
       price:    product.currency === 'INR' ? product.price : usdToInr(product.price, inrRate),
       currency: 'INR',
-      url:      product.url || product.productUrl || '', // unify url field names
+      url:      product.url || product.productUrl || '',
     });
 
-    // Combine results from both platforms, normalise, then rank by relevance
-    // (same brand / exact model first, cheaper alternatives last).
-    // rankProducts returns a new array sorted by relevanceScore desc, price asc.
-    const products = rankProducts(
-      [...fromAmazon.map(normalise), ...fromFlipkart.map(normalise)],
-      query
-    ).slice(0, 20);
+    const allProducts = [
+      ...fromAmazon.map(normalise),
+      ...fromFlipkart.map(normalise),
+      ...fromEbay.map(normalise),
+      ...fromEtsy.map(normalise),
+    ];
+
+    const products = rankProducts(allProducts, query).slice(0, 20);
 
     // ── Price statistics ─────────────────────────────────────────────────────
-    const prices           = products.map((p) => p.price);
+    const prices = products.map((p) => p.price);
     const cheapestPrice    = prices.length ? Math.min(...prices) : null;
-    const cheapestPlatform = products[0]?.platform || null;
-    const priceRange       = prices.length
-      ? { min: cheapestPrice, max: Math.max(...prices) }
-      : null;
+    // Find cheapest platform by price (not by rank position)
+    const cheapestProduct  = products.reduce((min, p) => (!min || p.price < min.price ? p : min), null);
+    const cheapestPlatform = cheapestProduct?.platform || null;
+    const priceRange       = prices.length ? {
+      min: cheapestPrice,
+      max: Math.max(...prices),
+      avg: +(prices.reduce((a, b) => a + b, 0) / prices.length).toFixed(2),
+    } : null;
 
     // ── Search history ───────────────────────────────────────────────────────
-    // Save this search to the database for logged-in users.
-    // We use .catch(() => {}) to make this non-blocking — if the DB write
-    // fails, we don't want it to crash the whole search response.
     if (userId && products.length) {
-      SearchHistory.create({
-        user:          userId,
-        query,
-        resultCount:   products.length,
-        cheapestPrice,
-      }).catch(() => {});
+      SearchHistory.create({ user: userId, query, resultCount: products.length, cheapestPrice }).catch(() => {});
     }
 
-    // ── Build result object ──────────────────────────────────────────────────
+    // ── Active platforms (only those that returned results) ──────────────────
+    const activePlatforms = [...new Set(products.map((p) => p.platform))];
+
     const result = {
       products,
       meta: {
         query,
         total:            products.length,
-        platforms:        ['Amazon', 'Flipkart'],
+        platforms:        activePlatforms,
         currency:         'INR',
-        exchangeRate:     inrRate,       // the rate used for any USD→INR conversions
+        exchangeRate:     inrRate,
         cheapestPrice,
         cheapestPlatform,
         priceRange,
         servedFromCache:  false,
-        fetchedAt:        new Date().toISOString(), // timestamp shown in the extension popup
-        // Only include partialErrors key if there were actually errors
+        fetchedAt:        new Date().toISOString(),
         ...(errors.length && { partialErrors: errors }),
       },
     };
 
-    // Store in cache with the current timestamp
     _cache.set(key, { data: result, ts: Date.now() });
     return result;
   }
