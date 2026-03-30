@@ -75,6 +75,17 @@ app.use('/api/history',  historyRoutes);
 // Price history snapshots — used by the browser extension
 app.use('/api/products', priceHistoryRoutes);
 
+// ── Root route ───────────────────────────────────────────────────────────────
+app.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: 'PricePulse API',
+    version: '2.0.0',
+    health:  '/api/health',
+    docs:    '/api/products/search?q=iphone',
+  });
+});
+
 // ── Health check ──────────────────────────────────────────────────────────────
 // Simple endpoint used by the frontend and Chrome extension to verify the
 // backend is reachable before making real API calls.
@@ -87,6 +98,11 @@ app.get('/api/health', (req, res) => {
     env:     process.env.NODE_ENV,
     time:    new Date().toISOString(),
   });
+});
+
+// ── 404 handler ──────────────────────────────────────────────────────────────
+app.use((req, res) => {
+  res.status(404).json({ success: false, message: `Route ${req.method} ${req.url} not found` });
 });
 
 // ── Centralised error handler ─────────────────────────────────────────────────
