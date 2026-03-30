@@ -23,8 +23,8 @@ if (process.env.VERCEL !== '1') {
     try {
       await connectDB();
       server = app.listen(PORT, () => {
-        console.log(`🚀 Backend server running on http://localhost:${PORT}`);
-        console.log(`📋 Health check: http://localhost:${PORT}/api/health`);
+        console.log(`🚀 Backend server ${PORT}`);
+        console.log(`📋 Health check: ${PORT}/api/health`);
       });
     } catch (error) {
       console.error('❌ Server failed to start:', error.message);
