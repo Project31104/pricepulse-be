@@ -13,6 +13,7 @@ import SearchHistory from '../models/SearchHistory.js';
 import { sendSuccess } from '../utils/ApiResponse.js';
 import { notFound, badRequest } from '../utils/ApiError.js';
 import { extractProductInfo } from '../utils/urlParser.js';
+import { rankProducts, extractBrand } from '../utils/rankProducts.js';
 
 /**
  * GET /api/products/search?q=query&page=1&limit=20&sort=price_asc&platform=Amazon,Flipkart
@@ -47,14 +48,15 @@ export const searchProducts = async (req, res, next) => {
     }
 
     // ── Sorting ────────────────────────────────────────────────────────────
-    // Map sort keys to comparator functions, then apply the chosen one
+    // Default sort is relevance (already applied by comparisonService).
+    // Explicit sort param overrides relevance ranking.
     const sortMap = {
-      price_asc:  (a, b) => a.price - b.price,   // cheapest first
-      price_desc: (a, b) => b.price - a.price,   // most expensive first
-      rating:     (a, b) => b.rating - a.rating, // highest rated first
-      reviews:    (a, b) => b.reviews - a.reviews, // most reviewed first
+      price_asc:  (a, b) => a.price - b.price,
+      price_desc: (a, b) => b.price - a.price,
+      rating:     (a, b) => b.rating - a.rating,
+      reviews:    (a, b) => b.reviews - a.reviews,
     };
-    if (sortMap[sort]) filtered = [...filtered].sort(sortMap[sort]);
+    if (sort !== 'relevance' && sortMap[sort]) filtered = [...filtered].sort(sortMap[sort]);
 
     // ── Pagination ─────────────────────────────────────────────────────────
     // Slice the sorted array to return only the requested page
@@ -70,6 +72,7 @@ export const searchProducts = async (req, res, next) => {
       200,
       {
         query:            q,
+        queryBrand:       extractBrand(q),
         total:            filtered.length,
         page:             pageNum,
         limit:            limitNum,
@@ -184,9 +187,9 @@ export const compareLinkProducts = async (req, res, next) => {
       return next(notFound(`No comparison results found for "${parsed.name}"`));
     }
 
-    // ── Step 3: Sort by price and flag the cheapest item ─────────────────────
-    const sorted = [...products].sort((a, b) => a.price - b.price);
-    sorted.forEach((p, i) => { p.isCheapest = i === 0; }); // first item is cheapest
+    // ── Step 3: Rank by relevance then price ──────────────────────────────
+    const sorted = rankProducts(products, parsed.name);
+    sorted.forEach((p, i) => { p.isCheapest = i === 0; });
 
     // ── Step 4: Calculate price statistics ───────────────────────────────────
     const prices   = sorted.map((p) => p.price);

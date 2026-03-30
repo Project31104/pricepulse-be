@@ -15,6 +15,7 @@ import amazonService   from './amazonService.js';
 import flipkartService from './flipkartService.js';
 import { getUsdToInrRate, usdToInr } from '../utils/currencyConverter.js';
 import SearchHistory from '../models/SearchHistory.js';
+import { rankProducts } from '../utils/rankProducts.js';
 
 // Cache TTL: read from .env (CACHE_TTL_MINUTES), default 10 minutes
 const CACHE_TTL_MS = (parseInt(process.env.CACHE_TTL_MINUTES, 10) || 10) * 60 * 1000;
@@ -82,12 +83,13 @@ class ComparisonService {
       url:      product.url || product.productUrl || '', // unify url field names
     });
 
-    // Combine results from both platforms, normalise, sort cheapest-first,
-    // and cap at 20 results total
-    const products = [
-      ...fromAmazon.map(normalise),
-      ...fromFlipkart.map(normalise),
-    ].sort((a, b) => a.price - b.price).slice(0, 20);
+    // Combine results from both platforms, normalise, then rank by relevance
+    // (same brand / exact model first, cheaper alternatives last).
+    // rankProducts returns a new array sorted by relevanceScore desc, price asc.
+    const products = rankProducts(
+      [...fromAmazon.map(normalise), ...fromFlipkart.map(normalise)],
+      query
+    ).slice(0, 20);
 
     // ── Price statistics ─────────────────────────────────────────────────────
     const prices           = products.map((p) => p.price);
