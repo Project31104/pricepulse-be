@@ -30,9 +30,9 @@ const app = express();
 // Without this, the browser would block requests from the React frontend.
 app.use(cors({
   origin: (origin, callback) => {
-    const allowed = process.env.CLIENT_URL || 'http://localhost:5173';
-    // Allow frontend, Chrome extensions, and requests with no origin (e.g. curl)
-    if (!origin || origin === allowed || origin.startsWith('chrome-extension://')) {
+    const allowed = (process.env.CLIENT_URL || 'http://localhost:5173').split(',').map(s => s.trim());
+    // Allow frontend origins, Chrome extensions, and no-origin requests (curl, Postman)
+    if (!origin || allowed.includes(origin) || origin.startsWith('chrome-extension://')) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
