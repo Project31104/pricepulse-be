@@ -9,40 +9,32 @@
 // It is intentionally kept small — all Express setup lives in
 // app.js so this file only handles startup orchestration.
 
-import 'dotenv/config'; // Reads .env from backend/ directory
-import app from './app.js';           // The fully configured Express application
-import connectDB from './config/db.js'; // Helper that opens the MongoDB connection
+import 'dotenv/config';
+import app from './app.js';
+import connectDB from './config/db.js';
 
-// Read PORT from environment, fall back to 5000 for local development
 const PORT = process.env.PORT || 5000;
 
-// async start() lets us await the DB connection before opening the HTTP port.
-// If we started the server before the DB was ready, requests would fail.
-let server;
+// Only start the HTTP server when running locally (not on Vercel).
+// Vercel imports api/index.js directly and handles the HTTP layer itself.
+if (process.env.VERCEL !== '1') {
+  let server;
+  const start = async () => {
+    try {
+      await connectDB();
+      server = app.listen(PORT, () => {
+        console.log(`🚀 Backend server running on http://localhost:${PORT}`);
+        console.log(`📋 Health check: http://localhost:${PORT}/api/health`);
+      });
+    } catch (error) {
+      console.error('❌ Server failed to start:', error.message);
+      process.exit(1);
+    }
+  };
 
-const start = async () => {
-  try {
-    // Step 1 — Connect to MongoDB. Throws if the connection fails.
-    await connectDB();
-
-    // Step 2 — Begin accepting HTTP requests only after DB is ready
-    server = app.listen(PORT, () => {
-      console.log(`🚀 Backend server running on http://localhost:${PORT}`);
-      console.log(`📋 Health check: http://localhost:${PORT}/api/health`);
-    });
-  } catch (error) {
-    // Something went wrong during startup — log it and crash intentionally
-    // so a process manager (e.g. PM2) can restart the app cleanly
-    console.error('❌ Server failed to start:', error.message);
-    process.exit(1);
-  }
-};
-
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully');
-  server.close(() => {
-    console.log('Process terminated');
+  process.on('SIGTERM', () => {
+    server?.close(() => console.log('Process terminated'));
   });
-});
 
-start();
+  start();
+}
