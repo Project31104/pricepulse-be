@@ -13,6 +13,7 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import requestLogger from './middleware/requestLogger.js';
 import errorMiddleware from './middleware/errorMiddleware.js';
@@ -67,18 +68,17 @@ app.use('/api/history',  historyRoutes);
 // Price history snapshots — used by the browser extension
 app.use('/api/products', priceHistoryRoutes);
 
-// ── Static downloads ─────────────────────────────────────────────────────────
-// Serves files from backend/downloads/ at /downloads/*
-// e.g. GET /downloads/extension.zip → sends the file directly
-app.use('/downloads', express.static(path.join(__dirname, 'downloads')));
-
 // ── Download extension route ──────────────────────────────────────────────────
-// Triggers a file download with the correct filename
 app.get('/download-extension', (req, res) => {
-  const file = path.join(__dirname, 'downloads', 'extension.zip');
-  res.download(file, 'PricePulse-Extension.zip', (err) => {
+  const file = path.join(__dirname, '..', 'extension', 'pricepulse-extension.zip');
+  if (!fs.existsSync(file)) {
+    console.error('[download-extension] File not found at:', file);
+    return res.status(404).json({ success: false, message: 'Extension file not found.' });
+  }
+  res.download(file, 'pricepulse-extension.zip', (err) => {
     if (err && !res.headersSent) {
-      res.status(404).json({ success: false, message: 'Extension file not found.' });
+      console.error('[download-extension] Send error:', err.message);
+      res.status(500).json({ success: false, message: 'Failed to send extension file.' });
     }
   });
 });
