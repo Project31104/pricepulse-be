@@ -36,19 +36,7 @@ app.set('trust proxy', 1);
 // ── CORS ──────────────────────────────────────────────────────────────────────
 // CORS (Cross-Origin Resource Sharing) controls which domains can call this API.
 // Without this, the browser would block requests from the React frontend.
-app.use(cors({
-  origin: (origin, callback) => {
-    const allowed = (process.env.CLIENT_URL || 'http://localhost:5173').split(',').map(s => s.trim());
-    // Allow frontend origins, Chrome extensions, and no-origin requests (curl, Postman)
-    if (!origin || allowed.includes(origin) || origin.startsWith('chrome-extension://')) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-}));
+app.use(cors());
 
 // ── Body parsers ──────────────────────────────────────────────────────────────
 // Parse incoming JSON bodies (e.g. POST /api/auth/login sends { email, password })
