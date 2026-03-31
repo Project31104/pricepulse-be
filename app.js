@@ -41,20 +41,7 @@ const allowedOrigins = [
   'http://localhost:3000',
 ].filter(Boolean);
 
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, Postman)
-    // and all chrome-extension:// origins
-    if (!origin || origin.startsWith('chrome-extension://') || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error(`CORS: origin ${origin} not allowed`));
-    }
-  },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true,
-}));
+app.use(cors());
 
 // Ensure preflight OPTIONS requests are handled before any other middleware
 app.options('*', cors());
